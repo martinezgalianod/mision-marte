@@ -1,0 +1,33 @@
+body {margin: 0; padding: 0; display: flex; justify_content: center;
+align-items: center; min-height: 100vh; font-family: sans-serif; background:
+linear-gradient(-45deg, #1a1a2e, "16213e, #0f3460, #1a1a2e"); background-size: 400% 400%; 
+animation: gradient 15 s ease infinite; 
+color: white;}
+@key frames gradient {
+    0% { background-position: 0%
+    50% }
+    }
+    .caja {
+        background: rgba(255, 255,
+        2550.1);
+        padding: 40px;
+        border-radius: 20px;
+        box-shadow 0 8px 32px 0
+        rgba(0, 0, 0, 0.37);
+        backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.18) ;
+text-align: center;
+animation: fadeIn 1.5s
+ease-out;   
+}
+@keyframes fadeIn {
+    from { opacity: 0o; transform:
+    translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+h1 {
+    color: #00f2ff
+}
+strong {
+    color: #ff007f;
+}

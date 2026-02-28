@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Misión Marte - Pro Edition</title>
+    <style>
+        body { background-color: #0b0d17; color: white; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        .interfaz { background: #161b22; padding: 30px; border-radius: 30px; border: 4px solid #00fbff; box-shadow: 0 0 30px rgba(0, 251, 255, 0.4); text-align: center; width: 500px; transition: 0.5s ease; position: relative; }
+        #titulo-central { font-size: 2.5rem; margin: 10px 0; transition: 0.5s; text-transform: uppercase; letter-spacing: 2px; color: #00fbff; text-shadow: 0 0 20px #00fbff; }
+        #reloj-digital { font-size: 2rem; color: #ff00ff; text-shadow: 0 0 15px #ff00ff; font-family: 'Courier New', monospace; margin: 10px 0; }
+        canvas { background: #000; border: 2px solid #ff9f43; border-radius: 15px; display: block; margin: 0 auto 20px; }
+        .controles { display: flex; justify-content: space-around; align-items: center; margin-top: 10px; }
+        .btn-neon { background: transparent; color: #00fbff; border: 2px solid #00fbff; padding: 12px 25px; border-radius: 8px; cursor: pointer; font-weight: bold; text-transform: uppercase; transition: 0.3s; }
+        #marcador-distancia { font-family: 'Courier New', monospace; font-size: 1.2rem; color: #fff; }
+        .instrucciones { font-size: 0.8rem; color: #888; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="interfaz" id="caja-principal">
+        <h1 id="titulo-central">Misión Marte</h1>
+        <div id="reloj-digital">00:00:00</div>
+        <canvas id="escenario-juego" width="450" height="250"></canvas>
+        <div class="controles">
+            <div id="marcador-distancia">DISTANCIA: 0000</div>
+            <button class="btn-neon" onclick="cambiarColorNeon()">Cambiar Neón</button>
+        </div>
+        <div class="instrucciones">↑ SALTAR | ↓ AGACHARSE | P PAUSA</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('escenario-juego');
+        const ctx = canvas.getContext('2d');
+
+        const imgFondo = new Image();
+        imgFondo.src = "{{ url_for('static', filename='Marte.jpeg') }}";
+        const imgAstro = new Image();
+        imgAstro.src = "{{ url_for('static', filename='Astronauta.png') }}";
+
+        let fondoX = 0;
+        let astroX = 60;
+        let astroY = 160; 
+        let astroVY = 0;  
+        const gravedad = 0.6;
+        const fuerzaSalto = -11;
+        const pisoY = 160; 
+        let enSuelo = true;
+        let agachado = false; // <-- NUEVO ESTADO
+
+        let obstaculos = [];
+        let puntaje = 0;
+        let juegoActivo = true;
+        let enPausa = false;
+        let frameContadorObstaculos = 0;
+        let velocidadBase = 4;
+
+        let frameX = 0;
+        let frameY = 0;
+        let contadorFrames = 0;
+
+        let indiceColor = 0;
+        const colores = [{p:"#00fbff", b:"rgba(0,251,255,0.4)"}, {p:"#f1c40f", b:"rgba(241,196,15,0.4)"}, {p:"#ff00ff", b:"rgba(255,0,255,0.4)"}, {p:"#2ecc71", b:"rgba(46,204,113,0.4)"}];
+
+        const teclas = {};
+        window.addEventListener("keydown", (e) => { 
+            teclas[e.code] = true; 
+            if (e.code === "KeyP" && juegoActivo) { enPausa = !enPausa; if (!enPausa) motorJuego(); }
+            if(["ArrowUp","ArrowDown","KeyP"].includes(e.code)) e.preventDefault();
+        });
+        window.addEventListener("keyup", (e) => { teclas[e.code] = false; });
+
+        function dibujarIconoPausa() {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; 
+            ctx.fillRect(canvas.width / 2 - 12, canvas.height / 2 - 25, 8, 50);
+            ctx.fillRect(canvas.width / 2 + 8, canvas.height / 2 - 25, 8, 50);
+            ctx.font = "bold 20px 'Segoe UI'"; ctx.fillStyle = "white"; ctx.textAlign = "center";
+            ctx.fillText("MISION EN PAUSA", canvas.width / 2, canvas.height / 2 + 55);
+        }
+
+        function dibujarAsteroide(x, y, tam) {
+            ctx.fillStyle = "#7f8c8d"; ctx.beginPath(); ctx.arc(x, y, tam, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#4d5656"; 
+            ctx.beginPath(); ctx.arc(x - tam*0.3, y - tam*0.2, tam*0.25, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x + tam*0.4, y + tam*0.1, tam*0.15, 0, Math.PI*2); ctx.fill();
+        }
+
+        function cambiarColorNeon() {
+            const t = document.getElementById("titulo-central");
+            const c = document.getElementById("caja-principal");
+            const col = colores[indiceColor];
+            t.style.color = col.p; t.style.textShadow = "0 0 20px " + col.p;
+            c.style.borderColor = col.p; c.style.boxShadow = "0 0 30px " + col.b;
+            indiceColor = (indiceColor + 1) % colores.length;
+        }
+
+        function motorJuego() {
+            if (!juegoActivo) return;
+            if (enPausa) { dibujarIconoPausa(); return; }
+
+            puntaje += 0.15;
+            document.getElementById("marcador-distancia").innerText = "DISTANCIA: " + Math.floor(puntaje).toString().padStart(4, '0');
+            let velocidadActual = velocidadBase + (puntaje / 180);
+
+            // --- LÓGICA DE AGACHARSE ---
+            if (teclas["ArrowDown"] && enSuelo) {
+                agachado = true;
+            } else {
+                agachado = false;
+            }
+
+            // Física Salto (Solo si no está agachado)
+            if (teclas["ArrowUp"] && enSuelo && !agachado) { astroVY = fuerzaSalto; enSuelo = false; }
+            astroVY += gravedad;
+            astroY += astroVY;
+            if (astroY >= pisoY) { astroY = pisoY; astroVY = 0; enSuelo = true; }
+
+            // Animación
+            contadorFrames++;
+            if (agachado) {
+                frameY = 48; frameX = 1; // Podemos usar este frame como "encogido"
+            } else if (enSuelo) {
+                frameY = 48; 
+                if (contadorFrames > 6) { frameX = (frameX + 1) % 4; contadorFrames = 0; }
+            } else {
+                frameY = 48; frameX = 1; 
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Fondo
+            fondoX -= velocidadActual / 2;
+            ctx.drawImage(imgFondo, fondoX, 0, canvas.width, canvas.height);
+            ctx.drawImage(imgFondo, fondoX + canvas.width, 0, canvas.width, canvas.height);
+            if (fondoX <= -canvas.width) fondoX = 0;
+
+            // Obstáculos
+            frameContadorObstaculos++;
+            if (frameContadorObstaculos > Math.max(30, 110 - (puntaje/15))) {
+                let esAlto = Math.random() > 0.7; // 30% de probabilidad de asteroide "volador"
+                obstaculos.push({
+                    x: canvas.width + 50,
+                    y: esAlto ? 145 : pisoY + 25, // El alto está justo para que te agaches
+                    tam: 18 + Math.random() * 10,
+                    esAlto: esAlto
+                });
+                frameContadorObstaculos = 0;
+            }
+
+            obstaculos.forEach((obs, index) => {
+                obs.x -= velocidadActual;
+                dibujarAsteroide(obs.x, obs.y, obs.tam);
+
+                // --- COLISIÓN AJUSTADA ---
+                let radioAstro = agachado ? 10 : 20; // Si está agachado, el radio de golpe es menor
+                let centroAstroY = agachado ? astroY + 40 : astroY + 25;
+
+                let dist = Math.sqrt(Math.pow(obs.x - (astroX + 25), 2) + Math.pow(obs.y - centroAstroY, 2));
+                
+                if (dist < obs.tam + radioAstro) {
+                    juegoActivo = false;
+                    alert("¡COLISIÓN! Puntaje final: " + Math.floor(puntaje));
+                    location.reload();
+                }
+                if (obs.x < -50) obstaculos.splice(index, 1);
+            });
+
+            // --- DIBUJAR PERSONAJE (Ajuste visual de agachado) ---
+            let altoVisual = agachado ? 35 : 55;
+            let yVisual = agachado ? astroY + 20 : astroY;
+            
+            ctx.drawImage(imgAstro, frameX * 48, frameY, 48, 48, astroX, yVisual, 55, altoVisual);
+
+            requestAnimationFrame(motorJuego);
+        }
+
+        function actualizarReloj() { document.getElementById("reloj-digital").innerText = new Date().toLocaleTimeString('es-ES', { hour12: false }); }
+        setInterval(actualizarReloj, 1000);
+        setInterval(cambiarColorNeon, 3000);
+
+        imgFondo.onload = () => { motorJuego(); actualizarReloj(); };
+    </script>
+</body>
+</html>
